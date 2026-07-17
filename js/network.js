@@ -33,7 +33,11 @@ function createRoom() {
         name: gameState.room.name,
         playerCount: gameState.players.length,
         peerId: id,
+        creator: gameState.nickname,
+        roomId: gameState.room.roomId,
       });
+      // 保存邀请码到列表
+      addInviteCodeList(gameState.room.inviteCode);
     }
 
     // 切换到游戏界面
@@ -72,6 +76,15 @@ function handleIncomingConnection(conn) {
           break;
         case 'territory-update':
           handleClientTerritoryUpdate(conn, data);
+          break;
+        case 'territory-move':
+          handleClientTerritoryMove(conn, data);
+          break;
+        case 'territory-release':
+          handleClientTerritoryRelease(conn, data);
+          break;
+        case 'leave':
+          handleClientLeave(conn, data);
           break;
       }
     });
@@ -116,6 +129,7 @@ function handleJoinRequest(conn, data) {
     room: gameState.room,
     players: gameState.players,
     territories: gameState.territories,
+    playerTerritoryMap: gameState.playerTerritoryMap,
     yourColor: colorInfo.color,
     yourColorIndex: colorInfo.colorIndex,
   });
@@ -133,6 +147,8 @@ function handleJoinRequest(conn, data) {
       name: gameState.room.name,
       playerCount: gameState.players.length,
       peerId: gameState.peerId,
+      creator: gameState.room.creator || gameState.players[0]?.nickname || '',
+      roomId: gameState.room.roomId,
     });
   }
 
@@ -153,6 +169,9 @@ function handleClientTerritoryUpdate(conn, data) {
   // 更新房主的地图
   gameState.territories[key] = territory;
 
+  // 更新玩家领地映射
+  gameState.playerTerritoryMap[territory.owner] = key;
+
   // 广播给所有玩家（包括发送者，以确认更新）
   broadcastAll({
     type: 'territory-update',
@@ -162,10 +181,67 @@ function handleClientTerritoryUpdate(conn, data) {
 }
 
 /**
- * 玩家断开连接处理（房主端）
+ * 房主处理来自客户端的领地移动
  */
-function handlePlayerDisconnect(peerId) {
-  console.log('玩家断开连接:', peerId);
+function handleClientTerritoryMove(conn, data) {
+  const oldKey = data.oldKey;
+  const newKey = data.newKey;
+  const territory = data.territory;
+
+  // 删除旧领地
+  delete gameState.territories[oldKey];
+
+  // 创建新领地
+  gameState.territories[newKey] = territory;
+
+  // 更新玩家领地映射
+  gameState.playerTerritoryMap[territory.owner] = newKey;
+
+  // 广播给所有玩家
+  broadcastAll({
+    type: 'territory-move',
+    oldKey: oldKey,
+    newKey: newKey,
+    territory: territory,
+  });
+}
+
+/**
+ * 房主处理来自客户端的领地释放
+ */
+function handleClientTerritoryRelease(conn, data) {
+  const key = data.key;
+  const playerId = data.playerId;
+
+  // 删除领地
+  delete gameState.territories[key];
+  delete gameState.playerTerritoryMap[playerId];
+
+  // 广播给所有玩家
+  broadcastAll({
+    type: 'territory-release',
+    key: key,
+    playerId: playerId,
+  });
+}
+
+/**
+ * 房主处理客户端主动退出
+ */
+function handleClientLeave(conn, data) {
+  const peerId = conn.peer;
+  // 释放该玩家的领地
+  const territoryKey = gameState.playerTerritoryMap[peerId];
+  if (territoryKey) {
+    delete gameState.territories[territoryKey];
+    delete gameState.playerTerritoryMap[peerId];
+    // 广播领地释放
+    broadcastAll({
+      type: 'territory-release',
+      key: territoryKey,
+      playerId: peerId,
+    });
+  }
 
   // 从玩家列表中移除
   gameState.players = gameState.players.filter(p => p.id !== peerId);
@@ -185,6 +261,53 @@ function handlePlayerDisconnect(peerId) {
       name: gameState.room.name,
       playerCount: gameState.players.length,
       peerId: gameState.peerId,
+      creator: gameState.room.creator || gameState.players[0]?.nickname || '',
+      roomId: gameState.room.roomId,
+    });
+  }
+
+  updateGameUI();
+}
+
+/**
+ * 玩家断开连接处理（房主端）
+ */
+function handlePlayerDisconnect(peerId) {
+  console.log('玩家断开连接:', peerId);
+
+  // 释放该玩家的领地
+  const territoryKey = gameState.playerTerritoryMap[peerId];
+  if (territoryKey) {
+    delete gameState.territories[territoryKey];
+    delete gameState.playerTerritoryMap[peerId];
+    // 广播领地释放给其他玩家
+    broadcastAll({
+      type: 'territory-release',
+      key: territoryKey,
+      playerId: peerId,
+    });
+  }
+
+  // 从玩家列表中移除
+  gameState.players = gameState.players.filter(p => p.id !== peerId);
+  delete gameState.connections[peerId];
+
+  // 通知其他玩家
+  broadcastAll({
+    type: 'player-left',
+    playerId: peerId,
+    players: gameState.players,
+  });
+
+  // 更新公共房间列表
+  if (gameState.room.isPublic) {
+    savePublicRoom({
+      inviteCode: gameState.room.inviteCode,
+      name: gameState.room.name,
+      playerCount: gameState.players.length,
+      peerId: gameState.peerId,
+      creator: gameState.room.creator || gameState.players[0]?.nickname || '',
+      roomId: gameState.room.roomId,
     });
   }
 
@@ -202,17 +325,12 @@ function joinPublicRoom(inviteCode) {
 
 /**
  * 加入私有房间
- * @param {string} inviteCode - 邀请码
+ * @param {string} inviteCode - 邀请码（新格式：房间名-房间ID-XXXXX-XX）
  * @param {string} password - 密码
  */
 function joinPrivateRoom(inviteCode, password) {
-  // 格式化邀请码（自动加横线）
-  let formattedCode = inviteCode;
-  if (inviteCode.length === 7 && !inviteCode.includes('-')) {
-    formattedCode = inviteCode.substring(0, 5) + '-' + inviteCode.substring(5);
-  }
-
-  const peerId = inviteCodeToPeerId(formattedCode);
+  // 新格式邀请码直接使用，从中提取 roomId 作为 PeerID
+  const peerId = inviteCodeToPeerId(inviteCode);
   joinRoom(peerId, password);
 }
 
@@ -251,7 +369,7 @@ function joinRoom(hostPeerId, password) {
       console.log('与房主的连接已断开');
       // 如果在游戏中，提示断开
       if (gameState.currentScreen === 'game') {
-        alert('与房主的连接已断开');
+        alert('房主已退出，房间已销毁');
         resetState();
         switchScreen('menu');
       }
@@ -297,6 +415,8 @@ function handleHostMessage(data) {
       gameState.room = data.room;
       gameState.players = data.players;
       gameState.territories = data.territories;
+      // 同步 playerTerritoryMap
+      gameState.playerTerritoryMap = data.playerTerritoryMap || {};
 
       // 确保自己在玩家列表中（房主已包含）
       switchScreen('game');
@@ -326,11 +446,36 @@ function handleHostMessage(data) {
 
     case 'territory-update':
       gameState.territories[data.key] = data.territory;
+      // 更新玩家领地映射
+      gameState.playerTerritoryMap[data.territory.owner] = data.key;
+      break;
+
+    case 'territory-move':
+      // 删除旧领地
+      delete gameState.territories[data.oldKey];
+      // 创建新领地
+      gameState.territories[data.newKey] = data.territory;
+      // 更新玩家领地映射
+      gameState.playerTerritoryMap[data.territory.owner] = data.newKey;
+      break;
+
+    case 'territory-release':
+      // 删除领地
+      delete gameState.territories[data.key];
+      delete gameState.playerTerritoryMap[data.playerId];
+      break;
+
+    case 'room-destroyed':
+      // 房主退出，房间已销毁
+      alert('房主已退出，房间已销毁');
+      resetState();
+      switchScreen('menu');
       break;
 
     case 'full-sync':
       gameState.territories = data.territories;
       gameState.players = data.players;
+      gameState.playerTerritoryMap = data.playerTerritoryMap || {};
       updateGameUI();
       break;
   }
@@ -363,12 +508,89 @@ function onTerritoryChange(key, territory) {
 }
 
 /**
+ * 领地移动时的同步（由 map.js 调用）
+ * @param {string} oldKey - 旧方块坐标键 'x,y'
+ * @param {string} newKey - 新方块坐标键 'x,y'
+ * @param {object} territory - 领地数据
+ */
+function onTerritoryMove(oldKey, newKey, territory) {
+  if (gameState.isHost) {
+    // 房主：广播给所有其他玩家
+    broadcastAll({
+      type: 'territory-move',
+      oldKey: oldKey,
+      newKey: newKey,
+      territory: territory,
+    });
+  } else {
+    // 非房主：发送给房主
+    const hostConn = getHostConnection();
+    if (hostConn) {
+      hostConn.send({
+        type: 'territory-move',
+        oldKey: oldKey,
+        newKey: newKey,
+        territory: territory,
+      });
+    }
+  }
+}
+
+/**
  * 获取到房主的连接（非房主端）
  */
 function getHostConnection() {
-  // 房主的 peerId 就是邀请码去掉横线
+  // 房主的 peerId 就是 roomId（从邀请码中提取）
   const hostPeerId = inviteCodeToPeerId(gameState.room.inviteCode);
   return gameState.connections[hostPeerId];
+}
+
+/**
+ * 普通玩家退出房间
+ */
+function leaveRoom() {
+  const hostConn = getHostConnection();
+
+  // 发送领地释放消息给房主
+  const myTerritory = gameState.playerTerritoryMap[gameState.peerId];
+  if (myTerritory && hostConn) {
+    hostConn.send({
+      type: 'territory-release',
+      key: myTerritory,
+      playerId: gameState.peerId,
+    });
+  }
+
+  // 发送离开消息给房主
+  if (hostConn) {
+    hostConn.send({ type: 'leave' });
+  }
+
+  // 关闭所有连接，销毁 Peer
+  resetState();
+
+  // 切换回主菜单
+  switchScreen('menu');
+}
+
+/**
+ * 房主销毁房间
+ */
+function destroyRoom() {
+  // 广播 room-destroyed 消息给所有玩家
+  broadcastAll({ type: 'room-destroyed' });
+
+  // 从 localStorage 移除公共房间信息和邀请码
+  if (gameState.room.isPublic) {
+    removePublicRoom(gameState.room.inviteCode);
+  }
+  removeInviteCodeList(gameState.room.inviteCode);
+
+  // 关闭所有连接，销毁 Peer
+  resetState();
+
+  // 切换回主菜单
+  switchScreen('menu');
 }
 
 /**

@@ -307,7 +307,7 @@ function onTouchEnd() {
 }
 
 /**
- * Canvas 点击 - 创建领地
+ * Canvas 点击 - 创建或移动领地（每人只能拥有一块领地）
  */
 function onCanvasClick(e) {
   // 如果是拖拽操作，不处理点击
@@ -333,7 +333,7 @@ function onCanvasClick(e) {
 
   const key = tileX + ',' + tileY;
 
-  // 已占领方块不可被其他玩家覆盖
+  // 已被其他玩家占领的方块：不可选择
   if (gameState.territories[key]) {
     return;
   }
@@ -342,13 +342,44 @@ function onCanvasClick(e) {
   const currentPlayer = getCurrentPlayer();
   if (!currentPlayer) return;
 
-  // 创建领地
-  const territoryData = {
-    owner: currentPlayer.id,
-    color: currentPlayer.color,
-  };
-  gameState.territories[key] = territoryData;
+  // 检查当前玩家是否已有领地
+  const oldKey = gameState.playerTerritoryMap[currentPlayer.id];
 
-  // 通知其他玩家（网络模块）
-  onTerritoryChange(key, territoryData);
+  if (oldKey) {
+    // 玩家已有领地，执行移动操作
+    // 如果点击的就是自己的领地，不做操作
+    if (oldKey === key) return;
+
+    // 删除旧领地
+    delete gameState.territories[oldKey];
+
+    // 创建新领地
+    const territoryData = {
+      owner: currentPlayer.id,
+      color: currentPlayer.color,
+    };
+    gameState.territories[key] = territoryData;
+
+    // 更新玩家领地映射
+    gameState.playerTerritoryMap[currentPlayer.id] = key;
+
+    // 显示 Toast 提示
+    showToast('你的领地已移动到新位置');
+
+    // 通知其他玩家领地移动
+    onTerritoryMove(oldKey, key, territoryData);
+  } else {
+    // 玩家首次选择领地
+    const territoryData = {
+      owner: currentPlayer.id,
+      color: currentPlayer.color,
+    };
+    gameState.territories[key] = territoryData;
+
+    // 在 playerTerritoryMap 中记录
+    gameState.playerTerritoryMap[currentPlayer.id] = key;
+
+    // 通知其他玩家（网络模块）
+    onTerritoryChange(key, territoryData);
+  }
 }

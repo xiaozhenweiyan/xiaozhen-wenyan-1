@@ -61,13 +61,16 @@ function initRegisterScreen() {
  */
 function initMenuScreen() {
   document.getElementById('btn-create-room').addEventListener('click', () => {
-    // 生成邀请码
-    gameState.room.inviteCode = generateInviteCode();
-    document.getElementById('display-invite-code').textContent = gameState.room.inviteCode;
+    // 预生成房间ID和邀请码后缀
+    gameState.room.roomId = generateRoomId();
+    gameState.room.inviteSuffix = generateInviteSuffix();
+    // 显示占位邀请码（房间名部分暂显示"？"）
+    document.getElementById('display-invite-code').textContent = '？-' + gameState.room.roomId + '-' + gameState.room.inviteSuffix;
     // 重置房间设置
     gameState.room.name = '';
     gameState.room.isPublic = true;
     gameState.room.password = '';
+    gameState.room.inviteCode = '';
     document.getElementById('input-room-name').value = '';
     document.getElementById('input-room-password').value = '';
     document.getElementById('password-group').style.display = 'none';
@@ -93,6 +96,7 @@ function initRoomSettingsScreen() {
   const btnBack = document.getElementById('btn-settings-back');
   const btnConfirm = document.getElementById('btn-settings-confirm');
   const errorEl = document.getElementById('settings-error');
+  const inputRoomName = document.getElementById('input-room-name');
 
   // 房间类型切换
   btnPublic.addEventListener('click', () => {
@@ -109,6 +113,13 @@ function initRoomSettingsScreen() {
     passwordGroup.style.display = 'block';
   });
 
+  // 房间名输入时实时更新邀请码显示
+  inputRoomName.addEventListener('input', () => {
+    const roomName = inputRoomName.value.trim();
+    const displayName = roomName || '？';
+    document.getElementById('display-invite-code').textContent = displayName + '-' + gameState.room.roomId + '-' + gameState.room.inviteSuffix;
+  });
+
   // 返回按钮
   btnBack.addEventListener('click', () => {
     switchScreen('menu');
@@ -116,7 +127,7 @@ function initRoomSettingsScreen() {
 
   // 确认按钮 - 创建房间
   btnConfirm.addEventListener('click', () => {
-    const roomName = document.getElementById('input-room-name').value.trim();
+    const roomName = inputRoomName.value.trim();
     if (!roomName) {
       errorEl.textContent = '请输入房间名字';
       return;
@@ -125,6 +136,9 @@ function initRoomSettingsScreen() {
     gameState.room.name = roomName;
     gameState.room.password = document.getElementById('input-room-password').value;
     gameState.isHost = true;
+
+    // 用最终的房间名+房间ID+后缀组合成完整邀请码
+    gameState.room.inviteCode = generateInviteCode(roomName, gameState.room.roomId);
 
     // 创建房间（调用网络模块）
     createRoom();
@@ -152,6 +166,7 @@ function refreshRoomList() {
       card.className = 'room-card';
       card.innerHTML = `
         <span class="room-card-name">${escapeHtml(room.name)}</span>
+        <span class="room-card-info">创建者：${escapeHtml(room.creator || '未知')} | 房间ID：${escapeHtml(room.roomId || '未知')}</span>
         <span class="room-card-players">${room.playerCount}人</span>
       `;
       card.addEventListener('click', () => {
@@ -268,6 +283,39 @@ function initGameScreen() {
   document.getElementById('btn-start-game').addEventListener('click', () => {
     alert('游戏即将开始！');
   });
+
+  // 退出房间按钮
+  document.getElementById('btn-leave-room').addEventListener('click', () => {
+    if (gameState.isHost) {
+      // 房主退出：销毁房间
+      destroyRoom();
+    } else {
+      // 普通玩家退出
+      leaveRoom();
+    }
+  });
+}
+
+/**
+ * 显示 Toast 提示消息
+ * @param {string} message - 提示内容
+ */
+function showToast(message) {
+  // 创建 toast 元素
+  const toast = document.createElement('div');
+  toast.className = 'toast-msg';
+  toast.textContent = message;
+
+  // 添加到游戏界面
+  const gameScreen = document.getElementById('screen-game');
+  gameScreen.appendChild(toast);
+
+  // 2秒后自动删除
+  setTimeout(() => {
+    if (toast.parentNode) {
+      toast.parentNode.removeChild(toast);
+    }
+  }, 2000);
 }
 
 /**

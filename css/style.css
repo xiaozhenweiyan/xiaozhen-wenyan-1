@@ -283,13 +283,14 @@ body {
 /* ===== 邀请码显示 ===== */
 .invite-code {
   font-family: 'Press Start 2P', monospace;
-  font-size: 16px;
+  font-size: 10px;
   color: #ffd700;
   background-color: #0f3460;
   border: 3px solid #ffd700;
   padding: 12px 20px;
   text-align: center;
-  letter-spacing: 3px;
+  letter-spacing: 1px;
+  word-break: break-all;
   box-shadow:
     inset -2px -2px 0 #0a2040,
     inset 2px 2px 0 #1a5090;
@@ -336,6 +337,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .room-card:hover {
@@ -346,6 +348,15 @@ body {
 .room-card-name {
   font-size: 12px;
   color: #e0e0e0;
+}
+
+.room-card-info {
+  font-size: 8px;
+  color: #7f8c8d;
+  display: block;
+  margin-top: 4px;
+  width: 100%;
+  order: 3;
 }
 
 .room-card-players {
@@ -481,6 +492,38 @@ body {
   font-size: 10px;
   padding: 10px 20px;
   animation: pulse-btn 1.5s ease-in-out infinite;
+}
+
+/* ===== 退出房间按钮 ===== */
+.btn-leave-room {
+  position: absolute;
+  bottom: 40px;
+  left: 12px;
+  z-index: 10;
+  pointer-events: auto;
+  font-size: 10px;
+  padding: 8px 16px;
+}
+
+/* ===== Toast 提示样式（像素风格，自动消失） ===== */
+.toast-msg {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 20;
+  font-size: 12px;
+  color: #ffd700;
+  background-color: rgba(0, 0, 0, 0.7);
+  padding: 12px 20px;
+  border: 2px solid #ffd700;
+  text-align: center;
+  animation: toast-fade 2s forwards;
+}
+@keyframes toast-fade {
+  0% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 @keyframes pulse-btn {
