@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>像素领地争夺战</title>
+  <!-- 像素字体 -->
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <!-- PeerJS CDN -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <!-- 全局样式 -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- ========== 开始界面 ========== -->
+  <div id="screen-start" class="screen active">
+    <div class="pixel-bg"></div>
+    <div class="screen-content center-content">
+      <h1 class="game-title">像素领地争夺战</h1>
+      <button class="pixel-btn btn-green" id="btn-start">开始游戏</button>
+    </div>
+    <!-- 像素装饰 -->
+    <div class="pixel-decor pixel-decor-1"></div>
+    <div class="pixel-decor pixel-decor-2"></div>
+    <div class="pixel-decor pixel-decor-3"></div>
+    <div class="pixel-decor pixel-decor-4"></div>
+  </div>
+
+  <!-- ========== 注册界面 ========== -->
+  <div id="screen-register" class="screen">
+    <div class="pixel-bg"></div>
+    <div class="screen-content center-content">
+      <h2 class="screen-title">创建角色</h2>
+      <div class="form-group">
+        <label class="pixel-label">昵称</label>
+        <input type="text" class="pixel-input" id="input-nickname" maxlength="12" placeholder="输入你的昵称">
+      </div>
+      <p class="error-msg" id="register-error"></p>
+      <button class="pixel-btn btn-green" id="btn-register">确认</button>
+    </div>
+  </div>
+
+  <!-- ========== 主菜单 ========== -->
+  <div id="screen-menu" class="screen">
+    <div class="pixel-bg"></div>
+    <div class="screen-content center-content">
+      <h2 class="screen-title">主菜单</h2>
+      <p class="nickname-display">昵称：<span id="display-nickname"></span></p>
+      <button class="pixel-btn btn-green menu-btn" id="btn-create-room">创建房间</button>
+      <button class="pixel-btn btn-blue menu-btn" id="btn-join-room">加入房间</button>
+    </div>
+  </div>
+
+  <!-- ========== 房间设置界面 ========== -->
+  <div id="screen-room-settings" class="screen">
+    <div class="pixel-bg"></div>
+    <div class="screen-content center-content">
+      <h2 class="screen-title">房间设置</h2>
+      <div class="form-group">
+        <label class="pixel-label">房间名字</label>
+        <input type="text" class="pixel-input" id="input-room-name" maxlength="20" placeholder="输入房间名字">
+      </div>
+      <div class="form-group">
+        <label class="pixel-label">房间类型</label>
+        <div class="toggle-group">
+          <button class="pixel-btn btn-toggle active" id="btn-public" data-value="public">公有</button>
+          <button class="pixel-btn btn-toggle" id="btn-private" data-value="private">私有</button>
+        </div>
+      </div>
+      <div class="form-group" id="password-group" style="display:none;">
+        <label class="pixel-label">房间密码</label>
+        <input type="password" class="pixel-input" id="input-room-password" maxlength="20" placeholder="可选密码">
+      </div>
+      <div class="form-group">
+        <label class="pixel-label">邀请码</label>
+        <div class="invite-code" id="display-invite-code">----- --</div>
+      </div>
+      <p class="error-msg" id="settings-error"></p>
+      <div class="btn-row">
+        <button class="pixel-btn btn-red" id="btn-settings-back">返回</button>
+        <button class="pixel-btn btn-green" id="btn-settings-confirm">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 加入房间界面 ========== -->
+  <div id="screen-join" class="screen">
+    <div class="pixel-bg"></div>
+    <div class="screen-header">
+      <button class="pixel-btn btn-red btn-small" id="btn-join-back">返回</button>
+      <button class="pixel-btn btn-blue btn-small" id="btn-join-private">加入私有房间</button>
+    </div>
+    <div class="screen-content">
+      <h2 class="screen-title">公共房间列表</h2>
+      <div id="room-list" class="room-list">
+        <!-- 房间卡片会动态插入 -->
+        <p class="empty-hint" id="no-rooms-hint">暂无公共房间</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 加入私有房间界面 ========== -->
+  <div id="screen-join-private" class="screen">
+    <div class="pixel-bg"></div>
+    <div class="screen-content center-content">
+      <h2 class="screen-title">加入私有房间</h2>
+      <div class="form-group">
+        <label class="pixel-label">邀请码</label>
+        <input type="text" class="pixel-input" id="input-invite-code" maxlength="8" placeholder="XXXXX-XX">
+      </div>
+      <div class="form-group">
+        <label class="pixel-label">密码（可选）</label>
+        <input type="password" class="pixel-input" id="input-join-password" maxlength="20" placeholder="如有密码请输入">
+      </div>
+      <p class="error-msg" id="join-private-error"></p>
+      <div class="btn-row">
+        <button class="pixel-btn btn-red" id="btn-join-private-back">返回</button>
+        <button class="pixel-btn btn-green" id="btn-join-private-confirm">加入</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 游戏界面 ========== -->
+  <div id="screen-game" class="screen">
+    <!-- 游戏地图 Canvas -->
+    <canvas id="game-canvas"></canvas>
+    <!-- 房间名称（左上角） -->
+    <div class="game-ui game-ui-room-name" id="game-room-name"></div>
+    <!-- 玩家列表（右上角） -->
+    <div class="game-ui game-ui-players" id="game-players-list"></div>
+    <!-- 邀请码（底部） -->
+    <div class="game-ui game-ui-invite" id="game-invite-code"></div>
+    <!-- 开始游戏按钮（仅房主可见，>=2人时显示） -->
+    <button class="pixel-btn btn-green btn-start-game" id="btn-start-game" style="display:none;">开始游戏</button>
+  </div>
+
+  <!-- 脚本按依赖顺序加载 -->
+  <script src="js/state.js"></script>
+  <script src="js/screens.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/network.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
