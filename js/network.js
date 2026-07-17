@@ -24,12 +24,11 @@ function formatTime(seconds) {
 
 /**
  * 创建房间（房主调用）
+ * 直接使用 gameState.room.roomId 作为 PeerJS 的 PeerID
  */
 function createRoom() {
-  const peerId = inviteCodeToPeerId(gameState.room.inviteCode);
-
-  // 创建 PeerJS 实例
-  gameState.peer = new Peer(peerId);
+  // 创建 PeerJS 实例，ID 为房间ID
+  gameState.peer = new Peer(gameState.room.roomId);
 
   gameState.peer.on('open', (id) => {
     gameState.peerId = id;
@@ -49,15 +48,12 @@ function createRoom() {
     // 如果是公共房间，保存到 localStorage
     if (gameState.room.isPublic) {
       savePublicRoom({
-        inviteCode: gameState.room.inviteCode,
+        roomId: gameState.room.roomId,
         name: gameState.room.name,
         playerCount: gameState.players.length,
-        peerId: id,
         creator: gameState.nickname,
-        roomId: gameState.room.roomId,
+        isPublic: true,
       });
-      // 保存邀请码到列表
-      addInviteCodeList(gameState.room.inviteCode);
     }
 
     // 设置房间过期时间（1小时后）
@@ -80,7 +76,7 @@ function createRoom() {
   gameState.peer.on('error', (err) => {
     console.error('PeerJS 错误:', err);
     if (err.type === 'unavailable-id') {
-      showModal('邀请码已被使用，请重新创建房间', 'alert');
+      showModal('房间ID已被使用，请重新创建房间', 'alert');
       gameState.peer.destroy();
       gameState.peer = null;
       switchScreen('room-settings');
@@ -112,7 +108,17 @@ function handleIncomingConnection(conn) {
           handleClientLeave(conn, data);
           break;
         case 'chat':
-          // 房主收到聊天消息：广播给所有玩家
+          // 房主收到聊天消息：保存到历史记录并广播给所有玩家
+          gameState.chatHistory.push({
+            senderNickname: data.senderNickname,
+            senderDigitalId: data.senderDigitalId,
+            message: data.message,
+            timestamp: Date.now(),
+          });
+          // 限制历史记录数量（最多100条）
+          if (gameState.chatHistory.length > 100) {
+            gameState.chatHistory.shift();
+          }
           broadcastAll({
             type: 'chat',
             senderNickname: data.senderNickname,
@@ -160,7 +166,7 @@ function handleJoinRequest(conn, data) {
   gameState.players.push(newPlayer);
   gameState.connections[conn.peer] = conn;
 
-  // 发送当前游戏状态给新玩家
+  // 发送当前游戏状态给新玩家（包含聊天历史）
   conn.send({
     type: 'welcome',
     room: gameState.room,
@@ -171,6 +177,7 @@ function handleJoinRequest(conn, data) {
     yourColorIndex: colorInfo.colorIndex,
     digitalId: data.digitalId || '',
     expiresAt: gameState.room.expiresAt,
+    chatHistory: gameState.chatHistory,
   });
 
   // 通知所有其他玩家
@@ -182,12 +189,11 @@ function handleJoinRequest(conn, data) {
   // 更新公共房间列表中的人数
   if (gameState.room.isPublic) {
     savePublicRoom({
-      inviteCode: gameState.room.inviteCode,
+      roomId: gameState.room.roomId,
       name: gameState.room.name,
       playerCount: gameState.players.length,
-      peerId: gameState.peerId,
       creator: gameState.room.creator || gameState.players[0]?.nickname || '',
-      roomId: gameState.room.roomId,
+      isPublic: true,
     });
   }
 
@@ -296,12 +302,11 @@ function handleClientLeave(conn, data) {
   // 更新公共房间列表
   if (gameState.room.isPublic) {
     savePublicRoom({
-      inviteCode: gameState.room.inviteCode,
+      roomId: gameState.room.roomId,
       name: gameState.room.name,
       playerCount: gameState.players.length,
-      peerId: gameState.peerId,
       creator: gameState.room.creator || gameState.players[0]?.nickname || '',
-      roomId: gameState.room.roomId,
+      isPublic: true,
     });
   }
 
@@ -341,12 +346,11 @@ function handlePlayerDisconnect(peerId) {
   // 更新公共房间列表
   if (gameState.room.isPublic) {
     savePublicRoom({
-      inviteCode: gameState.room.inviteCode,
+      roomId: gameState.room.roomId,
       name: gameState.room.name,
       playerCount: gameState.players.length,
-      peerId: gameState.peerId,
       creator: gameState.room.creator || gameState.players[0]?.nickname || '',
-      roomId: gameState.room.roomId,
+      isPublic: true,
     });
   }
 
@@ -355,27 +359,24 @@ function handlePlayerDisconnect(peerId) {
 
 /**
  * 加入公共房间
- * @param {string} inviteCode - 邀请码
+ * @param {string} roomId - 房间ID
  */
-function joinPublicRoom(inviteCode) {
-  const peerId = inviteCodeToPeerId(inviteCode);
-  joinRoom(peerId, '');
+function joinPublicRoom(roomId) {
+  joinRoom(roomId, '');
 }
 
 /**
  * 加入私有房间
- * @param {string} inviteCode - 邀请码（新格式：房间名-房间ID-XXXXX-XX）
+ * @param {string} roomId - 房间ID
  * @param {string} password - 密码
  */
-function joinPrivateRoom(inviteCode, password) {
-  // 新格式邀请码直接使用，从中提取 roomId 作为 PeerID
-  const peerId = inviteCodeToPeerId(inviteCode);
-  joinRoom(peerId, password);
+function joinPrivateRoom(roomId, password) {
+  joinRoom(roomId, password);
 }
 
 /**
  * 加入房间通用逻辑
- * @param {string} hostPeerId - 房主的 PeerID
+ * @param {string} hostPeerId - 房主的 PeerID（即房间ID）
  * @param {string} password - 密码
  */
 function joinRoom(hostPeerId, password) {
@@ -425,7 +426,7 @@ function joinRoom(hostPeerId, password) {
     conn.on('error', (err) => {
       console.error('连接房主失败:', err);
       hideLoadingScreen();
-      showModal('连接失败，请检查邀请码是否正确', 'alert', () => {
+      showModal('连接失败，请检查房间ID是否正确', 'alert', () => {
         resetState();
         switchScreen('menu');
       });
@@ -473,6 +474,13 @@ function handleHostMessage(data) {
       // 接收房间过期时间
       if (data.expiresAt) {
         gameState.room.expiresAt = data.expiresAt;
+      }
+
+      // 同步聊天历史（只保留当前房间的记录，不跨房间保留）
+      if (data.chatHistory && data.chatHistory.length > 0) {
+        data.chatHistory.forEach(msg => {
+          addChatMessage(msg.senderNickname, msg.senderDigitalId, msg.message);
+        });
       }
 
       // 确保自己在玩家列表中（房主已包含）
@@ -605,11 +613,10 @@ function onTerritoryMove(oldKey, newKey, territory) {
 
 /**
  * 获取到房主的连接（非房主端）
+ * 房主的 peerId 就是 roomId
  */
 function getHostConnection() {
-  // 房主的 peerId 就是 roomId（从邀请码中提取）
-  const hostPeerId = inviteCodeToPeerId(gameState.room.inviteCode);
-  return gameState.connections[hostPeerId];
+  return gameState.connections[gameState.room.roomId];
 }
 
 /**
@@ -650,11 +657,10 @@ function destroyRoom() {
   // 广播 room-destroyed 消息给所有玩家
   broadcastAll({ type: 'room-destroyed' });
 
-  // 从 localStorage 移除公共房间信息和邀请码
+  // 从 localStorage 移除公共房间信息
   if (gameState.room.isPublic) {
-    removePublicRoom(gameState.room.inviteCode);
+    removePublicRoom(gameState.room.roomId);
   }
-  removeInviteCodeList(gameState.room.inviteCode);
 
   // 停止房间倒计时
   stopRoomTimer();

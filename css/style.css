@@ -642,6 +642,68 @@ body {
   margin-left: 12px;
 }
 
+/* ===== 邀请码行（带复制按钮） ===== */
+.invite-code-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ===== 头部操作按钮组 ===== */
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ===== 搜索框 ===== */
+.search-box {
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto 16px;
+}
+.search-input {
+  font-size: 10px;
+}
+
+/* ===== 房间详情面板 ===== */
+.room-detail-panel {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.5);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+.room-detail-content {
+  background: #16213e;
+  border: 4px solid #5aff5a;
+  padding: 24px 32px;
+  max-width: 360px;
+  width: 90%;
+}
+.room-detail-title {
+  font-size: 14px;
+  color: #5aff5a;
+  margin-bottom: 16px;
+  text-align: center;
+}
+.room-detail-row {
+  font-size: 10px;
+  color: #e0e0e0;
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+}
+.room-detail-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 16px;
+}
+
 /* ===== 响应式 ===== */
 @media (max-width: 600px) {
   .game-title {

@@ -72,8 +72,11 @@
         <input type="password" class="pixel-input" id="input-room-password" maxlength="20" placeholder="可选密码">
       </div>
       <div class="form-group">
-        <label class="pixel-label">邀请码</label>
-        <div class="invite-code" id="display-invite-code">----- --</div>
+        <label class="pixel-label">房间ID（分享给朋友）</label>
+        <div class="invite-code-row">
+          <div class="invite-code" id="display-invite-code">-----</div>
+          <button class="pixel-btn btn-blue btn-small" id="btn-copy-room-id">复制</button>
+        </div>
       </div>
       <p class="error-msg" id="settings-error"></p>
       <div class="btn-row">
@@ -88,10 +91,16 @@
     <div class="pixel-bg"></div>
     <div class="screen-header">
       <button class="pixel-btn btn-red btn-small" id="btn-join-back">返回</button>
-      <button class="pixel-btn btn-blue btn-small" id="btn-join-private">加入私有房间</button>
+      <div class="header-actions">
+        <button class="pixel-btn btn-blue btn-small" id="btn-refresh-rooms">刷新</button>
+        <button class="pixel-btn btn-blue btn-small" id="btn-join-private">加入私有房间</button>
+      </div>
     </div>
     <div class="screen-content">
       <h2 class="screen-title">公共房间列表</h2>
+      <div class="search-box">
+        <input type="text" class="pixel-input search-input" id="input-search-room" placeholder="搜索房间名或ID...">
+      </div>
       <div id="room-list" class="room-list">
         <!-- 房间卡片会动态插入 -->
         <p class="empty-hint" id="no-rooms-hint">暂无公共房间</p>
@@ -105,8 +114,8 @@
     <div class="screen-content center-content">
       <h2 class="screen-title">加入私有房间</h2>
       <div class="form-group">
-        <label class="pixel-label">邀请码</label>
-        <input type="text" class="pixel-input" id="input-invite-code" maxlength="36" placeholder="房间名-房间ID-XXXXX-XX">
+        <label class="pixel-label">房间ID</label>
+        <input type="text" class="pixel-input" id="input-invite-code" maxlength="36" placeholder="输入房间ID">
       </div>
       <div class="form-group">
         <label class="pixel-label">密码（可选）</label>
@@ -128,8 +137,8 @@
     <div class="game-ui game-ui-room-name" id="game-room-name"></div>
     <!-- 房间倒计时（左上角偏下） -->
     <div class="game-ui game-ui-timer" id="game-room-timer"></div>
-    <!-- 玩家列表（右上角） -->
-    <div class="game-ui game-ui-players" id="game-players-list"></div>
+    <!-- 房间详情按钮（右上角） -->
+    <button class="pixel-btn btn-blue btn-small game-ui" id="btn-room-detail" style="top:10px;right:12px;pointer-events:auto;">房间详情</button>
     <!-- 邀请码（底部） -->
     <div class="game-ui game-ui-invite" id="game-invite-code"></div>
     <!-- 聊天区域（右下角） -->
@@ -141,6 +150,22 @@
     <button class="pixel-btn btn-green btn-start-game" id="btn-start-game" style="display:none;">开始游戏</button>
     <!-- 退出房间按钮 -->
     <button class="pixel-btn btn-red btn-leave-room" id="btn-leave-room">退出房间</button>
+
+    <!-- 房间详情面板 -->
+    <div class="room-detail-panel" id="room-detail-panel" style="display:none;">
+      <div class="room-detail-content">
+        <h3 class="room-detail-title">房间详情</h3>
+        <div class="room-detail-row"><span>房间名：</span><span id="detail-room-name"></span></div>
+        <div class="room-detail-row"><span>房间ID：</span><span id="detail-room-id"></span></div>
+        <div class="room-detail-row"><span>创建者：</span><span id="detail-creator"></span></div>
+        <div class="room-detail-row"><span>当前人数：</span><span id="detail-players"></span></div>
+        <div class="room-detail-row"><span>剩余时间：</span><span id="detail-timer"></span></div>
+        <div class="room-detail-actions">
+          <button class="pixel-btn btn-green btn-small" id="btn-copy-detail-id">复制ID</button>
+          <button class="pixel-btn btn-red btn-small" id="btn-close-detail">关闭</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ========== 加载画面 ========== -->

@@ -129,16 +129,14 @@ function initRegisterScreen() {
  */
 function initMenuScreen() {
   document.getElementById('btn-create-room').addEventListener('click', () => {
-    // 预生成房间ID和邀请码后缀
+    // 预生成房间ID
     gameState.room.roomId = generateRoomId();
-    gameState.room.inviteSuffix = generateInviteSuffix();
-    // 显示占位邀请码（房间名部分暂显示"？"）
-    document.getElementById('display-invite-code').textContent = '？-' + gameState.room.roomId + '-' + gameState.room.inviteSuffix;
+    // 显示房间ID
+    document.getElementById('display-invite-code').textContent = gameState.room.roomId;
     // 重置房间设置
     gameState.room.name = '';
     gameState.room.isPublic = true;
     gameState.room.password = '';
-    gameState.room.inviteCode = '';
     document.getElementById('input-room-name').value = '';
     document.getElementById('input-room-password').value = '';
     document.getElementById('password-group').style.display = 'none';
@@ -181,12 +179,24 @@ function initRoomSettingsScreen() {
     passwordGroup.style.display = 'block';
   });
 
-  // 房间名输入时实时更新邀请码显示
+  // 房间名输入时实时更新显示（房间名-房间ID）
   inputRoomName.addEventListener('input', () => {
     const roomName = inputRoomName.value.trim();
     const displayName = roomName || '？';
-    document.getElementById('display-invite-code').textContent = displayName + '-' + gameState.room.roomId + '-' + gameState.room.inviteSuffix;
+    document.getElementById('display-invite-code').textContent = displayName + '-' + gameState.room.roomId;
   });
+
+  // 复制房间ID按钮
+  const btnCopyRoomId = document.getElementById('btn-copy-room-id');
+  if (btnCopyRoomId) {
+    btnCopyRoomId.addEventListener('click', () => {
+      navigator.clipboard.writeText(gameState.room.roomId).then(() => {
+        showToastGlobal('已复制房间ID');
+      }).catch(() => {
+        showToastGlobal('复制失败');
+      });
+    });
+  }
 
   // 返回按钮
   btnBack.addEventListener('click', () => {
@@ -205,31 +215,48 @@ function initRoomSettingsScreen() {
     gameState.room.password = document.getElementById('input-room-password').value;
     gameState.isHost = true;
 
-    // 用最终的房间名+房间ID+后缀组合成完整邀请码
-    gameState.room.inviteCode = generateInviteCode(roomName, gameState.room.roomId);
-
     // 创建房间（调用网络模块）
     createRoom();
   });
 }
 
+// 缓存所有公共房间，用于搜索
+let allRooms = [];
+
 /**
  * 刷新公共房间列表
+ * 支持搜索过滤，按 roomId 字典序排序
  */
 function refreshRoomList() {
   const roomListEl = document.getElementById('room-list');
   const noRoomsHint = document.getElementById('no-rooms-hint');
-  const rooms = getPublicRooms();
+  const searchInput = document.getElementById('input-search-room');
+
+  // 读取所有房间并按 roomId 排序
+  allRooms = getPublicRooms();
+  allRooms.sort((a, b) => (a.roomId || '').localeCompare(b.roomId || ''));
+
+  // 根据搜索框内容过滤
+  let filteredRooms = allRooms;
+  if (searchInput) {
+    const keyword = searchInput.value.trim().toLowerCase();
+    if (keyword) {
+      filteredRooms = allRooms.filter(room => {
+        return (room.name || '').toLowerCase().includes(keyword) ||
+               (room.roomId || '').toLowerCase().includes(keyword);
+      });
+    }
+  }
 
   // 清除旧卡片（保留 noRoomsHint）
   const oldCards = roomListEl.querySelectorAll('.room-card');
   oldCards.forEach(card => card.remove());
 
-  if (rooms.length === 0) {
+  if (filteredRooms.length === 0) {
     noRoomsHint.style.display = 'block';
   } else {
     noRoomsHint.style.display = 'none';
-    rooms.forEach(room => {
+    filteredRooms.forEach(room => {
       const card = document.createElement('div');
       card.className = 'room-card';
       card.innerHTML = `
@@ -238,12 +265,12 @@ function refreshRoomList() {
           <span class="room-card-info">创建者：${escapeHtml(room.creator || '未知')} | 房间ID：${escapeHtml(room.roomId || '未知')}</span>
           <span class="room-card-players">${room.playerCount}人</span>
         </div>
-        <button class="pixel-btn btn-green btn-small btn-join-card" data-code="${escapeHtml(room.inviteCode)}">加入</button>
+        <button class="pixel-btn btn-green btn-small btn-join-card" data-roomid="${escapeHtml(room.roomId)}">加入</button>
       `;
       // 点击"加入"按钮才触发加入房间
       card.querySelector('.btn-join-card').addEventListener('click', (e) => {
         e.stopPropagation();
-        joinPublicRoom(room.inviteCode);
+        joinPublicRoom(room.roomId);
       });
       roomListEl.appendChild(card);
     });
@@ -267,6 +294,22 @@ function initJoinScreen() {
     switchScreen('menu');
   });
 
+  // 刷新按钮
+  const btnRefresh = document.getElementById('btn-refresh-rooms');
+  if (btnRefresh) {
+    btnRefresh.addEventListener('click', () => {
+      refreshRoomList();
+    });
+  }
+
+  // 搜索框实时过滤
+  const searchInput = document.getElementById('input-search-room');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      refreshRoomList();
+    });
+  }
+
   document.getElementById('btn-join-private').addEventListener('click', () => {
     // 清空输入
     document.getElementById('input-invite-code').value = '';
@@ -289,63 +332,112 @@ function initJoinPrivateScreen() {
   });
 
   btnConfirm.addEventListener('click', () => {
-    const inviteCode = document.getElementById('input-invite-code').value.trim().toUpperCase();
+    const roomId = document.getElementById('input-invite-code').value.trim().toUpperCase();
     const password = document.getElementById('input-join-password').value;
 
-    if (!inviteCode) {
-      errorEl.textContent = '请输入邀请码';
+    if (!roomId) {
+      errorEl.textContent = '请输入房间ID';
       return;
     }
 
     errorEl.textContent = '';
-    joinPrivateRoom(inviteCode, password);
+    joinPrivateRoom(roomId, password);
   });
 }
 
 /**
- * 更新游戏界面UI（房间名、玩家列表、邀请码等）
+ * 更新游戏界面UI（房间名、玩家列表、房间ID等）
  */
 function updateGameUI() {
   // 房间名称
   document.getElementById('game-room-name').textContent = gameState.room.name;
 
-  // 玩家列表
+  // 玩家列表（移到房间详情面板中显示，这里不再在右上角显示）
+  // 旧逻辑保留：如果页面中仍有 game-players-list 则更新
   const playersListEl = document.getElementById('game-players-list');
-  playersListEl.innerHTML = '';
-  gameState.players.forEach(player => {
-    const item = document.createElement('div');
-    item.className = 'player-item';
+  if (playersListEl) {
+    playersListEl.innerHTML = '';
+    gameState.players.forEach(player => {
+      const item = document.createElement('div');
+      item.className = 'player-item';
 
-    const nameSpan = document.createElement('span');
-    nameSpan.textContent = player.nickname + '#' + (player.digitalId || '');
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = player.nickname + '#' + (player.digitalId || '');
 
-    const dot = document.createElement('span');
-    dot.className = 'player-dot';
-    dot.style.backgroundColor = PLAYER_COLORS_SOLID[player.colorIndex];
+      const dot = document.createElement('span');
+      dot.className = 'player-dot';
+      dot.style.backgroundColor = PLAYER_COLORS_SOLID[player.colorIndex];
 
-    item.appendChild(nameSpan);
+      item.appendChild(nameSpan);
 
-    // 房主标识
-    if (player.id === gameState.players[0]?.id) {
-      const badge = document.createElement('span');
-      badge.className = 'host-badge';
-      badge.textContent = '👑';
-      item.appendChild(badge);
-    }
+      // 房主标识
+      if (player.id === gameState.players[0]?.id) {
+        const badge = document.createElement('span');
+        badge.className = 'host-badge';
+        badge.textContent = '👑';
+        item.appendChild(badge);
+      }
 
-    item.appendChild(dot);
-    playersListEl.appendChild(item);
-  });
+      item.appendChild(dot);
+      playersListEl.appendChild(item);
+    });
+  }
 
-  // 邀请码
-  document.getElementById('game-invite-code').textContent = '邀请码：' + gameState.room.inviteCode;
+  // 底部显示房间ID
+  const inviteCodeEl = document.getElementById('game-invite-code');
+  if (inviteCodeEl) {
+    inviteCodeEl.textContent = '房间ID：' + gameState.room.roomId;
+  }
+
+  // 更新房间详情面板数据
+  updateRoomDetailPanel();
 
   // 开始游戏按钮（仅房主且>=2人时显示）
   const startBtn = document.getElementById('btn-start-game');
-  if (gameState.isHost && gameState.players.length >= 2) {
-    startBtn.style.display = 'block';
+  if (startBtn) {
+    if (gameState.isHost && gameState.players.length >= 2) {
+      startBtn.style.display = 'block';
+    } else {
+      startBtn.style.display = 'none';
+    }
+  }
+}
+
+/**
+ * 切换房间详情面板的显示/隐藏
+ * @param {boolean} show - 是否显示
+ */
+function toggleRoomDetailPanel(show) {
+  const panel = document.getElementById('room-detail-panel');
+  if (!panel) return;
+  if (show) {
+    updateRoomDetailPanel();
+    panel.style.display = 'flex';
   } else {
-    startBtn.style.display = 'none';
+    panel.style.display = 'none';
+  }
+}
+
+/**
+ * 更新房间详情面板中的数据
+ */
+function updateRoomDetailPanel() {
+  const nameEl = document.getElementById('detail-room-name');
+  const idEl = document.getElementById('detail-room-id');
+  const creatorEl = document.getElementById('detail-creator');
+  const playersEl = document.getElementById('detail-players');
+  const timerEl = document.getElementById('detail-timer');
+
+  if (nameEl) nameEl.textContent = gameState.room.name || '-';
+  if (idEl) idEl.textContent = gameState.room.roomId || '-';
+  if (creatorEl) creatorEl.textContent = gameState.room.creator || (gameState.players[0]?.nickname || '未知');
+  if (playersEl) playersEl.textContent = gameState.players.length + ' / 8';
+
+  if (timerEl && gameState.room.expiresAt) {
+    const remaining = Math.max(0, Math.ceil((gameState.room.expiresAt - Date.now()) / 1000));
+    timerEl.textContent = formatTime(remaining);
+  } else if (timerEl) {
+    timerEl.textContent = '--:--';
   }
 }
 
@@ -370,6 +462,44 @@ function initGameScreen() {
       leaveRoom();
     }
   });
+
+  // 房间详情按钮
+  const btnRoomDetail = document.getElementById('btn-room-detail');
+  if (btnRoomDetail) {
+    btnRoomDetail.addEventListener('click', () => {
+      toggleRoomDetailPanel(true);
+    });
+  }
+
+  // 关闭详情面板按钮
+  const btnCloseDetail = document.getElementById('btn-close-detail');
+  if (btnCloseDetail) {
+    btnCloseDetail.addEventListener('click', () => {
+      toggleRoomDetailPanel(false);
+    });
+  }
+
+  // 复制房间ID按钮（详情面板内）
+  const btnCopyDetailId = document.getElementById('btn-copy-detail-id');
+  if (btnCopyDetailId) {
+    btnCopyDetailId.addEventListener('click', () => {
+      navigator.clipboard.writeText(gameState.room.roomId).then(() => {
+        showToastGlobal('已复制房间ID');
+      }).catch(() => {
+        showToastGlobal('复制失败');
+      });
+    });
+  }
+
+  // 点击面板背景关闭面板
+  const roomDetailPanel = document.getElementById('room-detail-panel');
+  if (roomDetailPanel) {
+    roomDetailPanel.addEventListener('click', (e) => {
+      if (e.target === roomDetailPanel) {
+        toggleRoomDetailPanel(false);
+      }
+    });
+  }
 
   // 聊天输入框事件
   const chatInput = document.getElementById('chat-input');
