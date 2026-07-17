@@ -332,12 +332,11 @@ body {
   border: 3px solid #2c3e50;
   padding: 16px 20px;
   margin-bottom: 12px;
-  cursor: pointer;
   transition: border-color 0.15s, background-color 0.15s;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .room-card:hover {
@@ -355,8 +354,6 @@ body {
   color: #7f8c8d;
   display: block;
   margin-top: 4px;
-  width: 100%;
-  order: 3;
 }
 
 .room-card-players {
@@ -547,6 +544,102 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #3d566e;
+}
+
+/* ===== 像素风格 Modal ===== */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.6);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-box {
+  background: #16213e;
+  border: 4px solid #5aff5a;
+  padding: 24px 32px;
+  max-width: 400px;
+  text-align: center;
+}
+.modal-message {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 12px;
+  color: #e0e0e0;
+  margin-bottom: 20px;
+  line-height: 1.8;
+}
+.modal-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+/* ===== 房间倒计时 ===== */
+.game-ui-timer {
+  top: 30px;
+  left: 12px;
+  color: #ffd700;
+  text-shadow: 1px 1px 0 #000;
+}
+
+/* ===== 聊天区域 ===== */
+.chat-area {
+  position: absolute;
+  bottom: 10px;
+  right: 12px;
+  width: 280px;
+  max-height: 200px;
+  z-index: 10;
+  pointer-events: auto;
+}
+.chat-messages {
+  max-height: 150px;
+  overflow-y: auto;
+  background: rgba(0,0,0,0.5);
+  padding: 8px;
+  border: 2px solid #2c3e50;
+}
+.chat-msg {
+  font-size: 8px;
+  color: #e0e0e0;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+.chat-input {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  background: #16213e;
+  color: #e0e0e0;
+  border: 2px solid #4a8c3f;
+  padding: 6px 8px;
+  width: 100%;
+  outline: none;
+}
+
+/* ===== 加载画面 ===== */
+.loading-timer {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 32px;
+  color: #ffd700;
+  margin-bottom: 24px;
+  animation: timer-pulse 1s ease-in-out infinite;
+}
+@keyframes timer-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ===== 房间卡片加入按钮 ===== */
+.room-card-info-area {
+  flex: 1;
+  min-width: 0;
+}
+.btn-join-card {
+  flex-shrink: 0;
+  margin-left: 12px;
 }
 
 /* ===== 响应式 ===== */

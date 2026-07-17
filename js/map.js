@@ -30,6 +30,9 @@ let isDragAction = false;
 // 是否已初始化事件监听（防止重复绑定）
 let mapEventsInitialized = false;
 
+// 是否已初始化键盘事件监听
+let keyEventsInitialized = false;
+
 // 草地颜色预设（多种深浅绿色）
 const GRASS_COLORS = [
   '#4a8c3f', '#5a9c4f', '#3a7c2f', '#4e9044', '#56994c',
@@ -70,6 +73,12 @@ function initMap() {
 
     // 点击领地
     canvas.addEventListener('click', onCanvasClick);
+  }
+
+  // 键盘事件（聊天快捷键）
+  if (!keyEventsInitialized) {
+    keyEventsInitialized = true;
+    document.addEventListener('keydown', handleKeyDown);
   }
 
   // 居中视口
@@ -241,6 +250,9 @@ function renderLoop() {
  * 鼠标按下 - 开始拖拽，记录点击起始位置
  */
 function onMapMouseDown(e) {
+  // 聊天激活时不处理地图交互
+  if (chatActive) return;
+
   clickStartX = e.clientX;
   clickStartY = e.clientY;
   isDragAction = false;
@@ -310,6 +322,8 @@ function onTouchEnd() {
  * Canvas 点击 - 创建或移动领地（每人只能拥有一块领地）
  */
 function onCanvasClick(e) {
+  // 聊天激活时不处理地图交互
+  if (chatActive) return;
   // 如果是拖拽操作，不处理点击
   if (isDragAction) return;
 
@@ -381,5 +395,31 @@ function onCanvasClick(e) {
 
     // 通知其他玩家（网络模块）
     onTerritoryChange(key, territoryData);
+  }
+}
+
+/**
+ * 键盘事件处理（聊天快捷键）
+ */
+function handleKeyDown(e) {
+  // 只在游戏界面处理
+  if (gameState.currentScreen !== 'game') return;
+
+  // T键激活聊天（不在输入框时）
+  if (e.key === 't' || e.key === 'T') {
+    // 如果已经在聊天中，不重复激活
+    if (chatActive) return;
+    // 如果当前焦点在其他输入框，不拦截
+    if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+    e.preventDefault();
+    activateChat();
+  }
+
+  // ESC键取消聊天
+  if (e.key === 'Escape') {
+    if (chatActive) {
+      e.preventDefault();
+      deactivateChat();
+    }
   }
 }

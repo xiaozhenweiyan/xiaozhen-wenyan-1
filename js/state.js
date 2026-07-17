@@ -30,6 +30,7 @@ const PLAYER_COLORS_SOLID = [
 // 全局游戏状态
 const gameState = {
   nickname: '',            // 当前玩家昵称
+  digitalId: '',           // 数字ID（#1000-#9999）
   peerId: '',              // 当前玩家的 PeerJS ID
   isHost: false,           // 是否为房主
   room: {
@@ -39,6 +40,7 @@ const gameState = {
     inviteCode: '',        // 完整邀请码 房间名-房间ID-XXXXX-XX
     roomId: '',            // 房间唯一ID
     inviteSuffix: '',      // 邀请码后缀 XXXXX-XX（创建时预生成）
+    expiresAt: 0,          // 房间过期时间戳（1小时倒计时）
   },
   players: [],             // 玩家列表 {id, nickname, color, colorIndex}
   territories: {},         // 领地数据 {'x,y': {owner: playerId, color: 'rgba(...)'}}
@@ -51,6 +53,16 @@ const gameState = {
   peer: null,              // PeerJS 实例
   nextColorIndex: 0,       // 下一个分配的颜色索引
 };
+
+/**
+ * 生成数字ID（#1000-#9999范围随机数）
+ * 临时账户，退出即销毁，不持久化
+ * @returns {string} 格式 "#1234"
+ */
+function generateDigitalId() {
+  const num = Math.floor(Math.random() * 9000) + 1000;
+  return '#' + num;
+}
 
 /**
  * 生成基于时间戳的唯一房间ID
@@ -178,6 +190,7 @@ function allocateColor() {
  */
 function resetState() {
   gameState.isHost = false;
+  gameState.digitalId = '';
   gameState.room = {
     name: '',
     isPublic: true,
@@ -185,6 +198,7 @@ function resetState() {
     inviteCode: '',
     roomId: '',
     inviteSuffix: '',
+    expiresAt: 0,
   };
   gameState.players = [];
   gameState.territories = {};

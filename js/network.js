@@ -3,6 +3,25 @@
  * 处理房间的创建、加入、数据同步
  */
 
+// 房间倒计时定时器
+let roomTimerInterval = null;
+
+// 加载画面秒表定时器
+let loadingTimerInterval = null;
+let loadingTimeout = null;
+
+/**
+ * 格式化秒数为 MM:SS
+ * @param {number} seconds - 秒数
+ * @returns {string} 格式化后的时间字符串
+ */
+function formatTime(seconds) {
+  if (seconds <= 0) return '00:00';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
 /**
  * 创建房间（房主调用）
  */
@@ -21,6 +40,7 @@ function createRoom() {
     const hostPlayer = {
       id: id,
       nickname: gameState.nickname,
+      digitalId: gameState.digitalId,
       color: colorInfo.color,
       colorIndex: colorInfo.colorIndex,
     };
@@ -40,11 +60,16 @@ function createRoom() {
       addInviteCodeList(gameState.room.inviteCode);
     }
 
+    // 设置房间过期时间（1小时后）
+    gameState.room.expiresAt = Date.now() + 3600000;
+
     // 切换到游戏界面
     switchScreen('game');
     initMap();
     rebindCanvasEvents();
     updateGameUI();
+    // 启动房间倒计时
+    startRoomTimer();
   });
 
   gameState.peer.on('connection', (conn) => {
@@ -55,7 +80,7 @@ function createRoom() {
   gameState.peer.on('error', (err) => {
     console.error('PeerJS 错误:', err);
     if (err.type === 'unavailable-id') {
-      alert('邀请码已被使用，请重新创建房间');
+      showModal('邀请码已被使用，请重新创建房间', 'alert');
       gameState.peer.destroy();
       gameState.peer = null;
       switchScreen('room-settings');
@@ -85,6 +110,17 @@ function handleIncomingConnection(conn) {
           break;
         case 'leave':
           handleClientLeave(conn, data);
+          break;
+        case 'chat':
+          // 房主收到聊天消息：广播给所有玩家
+          broadcastAll({
+            type: 'chat',
+            senderNickname: data.senderNickname,
+            senderDigitalId: data.senderDigitalId,
+            message: data.message,
+          });
+          // 房主自己也显示
+          addChatMessage(data.senderNickname, data.senderDigitalId, data.message);
           break;
       }
     });
@@ -117,6 +153,7 @@ function handleJoinRequest(conn, data) {
   const newPlayer = {
     id: conn.peer,
     nickname: data.nickname,
+    digitalId: data.digitalId || '',
     color: colorInfo.color,
     colorIndex: colorInfo.colorIndex,
   };
@@ -132,6 +169,8 @@ function handleJoinRequest(conn, data) {
     playerTerritoryMap: gameState.playerTerritoryMap,
     yourColor: colorInfo.color,
     yourColorIndex: colorInfo.colorIndex,
+    digitalId: data.digitalId || '',
+    expiresAt: gameState.room.expiresAt,
   });
 
   // 通知所有其他玩家
@@ -340,6 +379,9 @@ function joinPrivateRoom(inviteCode, password) {
  * @param {string} password - 密码
  */
 function joinRoom(hostPeerId, password) {
+  // 先显示加载画面
+  showLoadingScreen();
+
   // 创建自己的 Peer 实例（随机ID）
   gameState.peer = new Peer();
 
@@ -347,14 +389,18 @@ function joinRoom(hostPeerId, password) {
     gameState.peerId = myId;
     console.log('我的 PeerID:', myId, '，正在连接房主:', hostPeerId);
 
-    // 连接到房主
-    const conn = gameState.peer.connect(hostPeerId);
+    // 使用可靠的 JSON 序列化连接房主
+    const conn = gameState.peer.connect(hostPeerId, {
+      serialization: 'json',
+      reliable: true,
+    });
 
     conn.on('open', () => {
       // 发送加入请求
       conn.send({
         type: 'join',
         nickname: gameState.nickname,
+        digitalId: gameState.digitalId,
         password: password,
       });
 
@@ -369,36 +415,43 @@ function joinRoom(hostPeerId, password) {
       console.log('与房主的连接已断开');
       // 如果在游戏中，提示断开
       if (gameState.currentScreen === 'game') {
-        alert('房主已退出，房间已销毁');
-        resetState();
-        switchScreen('menu');
+        showModal('房主已退出，房间已销毁', 'alert', () => {
+          resetState();
+          switchScreen('menu');
+        });
       }
     });
 
     conn.on('error', (err) => {
       console.error('连接房主失败:', err);
-      alert('连接失败，请检查邀请码是否正确');
-      resetState();
-      switchScreen('menu');
+      hideLoadingScreen();
+      showModal('连接失败，请检查邀请码是否正确', 'alert', () => {
+        resetState();
+        switchScreen('menu');
+      });
     });
   });
 
   gameState.peer.on('error', (err) => {
     console.error('PeerJS 错误:', err);
     if (err.type === 'peer-unavailable') {
+      hideLoadingScreen();
       // 根据当前界面决定错误提示方式
-      if (gameState.currentScreen === 'join-private') {
-        // 私有房间界面：在页面上显示错误，不跳转
-        document.getElementById('join-private-error').textContent = '房间不存在';
+      if (gameState.currentScreen === 'loading' || gameState.currentScreen === 'join-private') {
+        // 私有房间界面或加载画面：在页面上显示错误，不跳转
+        const joinPrivateError = document.getElementById('join-private-error');
+        if (joinPrivateError) joinPrivateError.textContent = '房间不存在';
         if (gameState.peer) {
           gameState.peer.destroy();
           gameState.peer = null;
         }
+        switchScreen('join-private');
       } else {
-        // 公共房间界面：弹窗提示，返回加入界面
-        alert('房间不存在');
-        resetState();
-        switchScreen('join');
+        // 公共房间界面：Modal提示，返回加入界面
+        showModal('房间不存在', 'alert', () => {
+          resetState();
+          switchScreen('join');
+        });
       }
     }
   });
@@ -417,18 +470,31 @@ function handleHostMessage(data) {
       gameState.territories = data.territories;
       // 同步 playerTerritoryMap
       gameState.playerTerritoryMap = data.playerTerritoryMap || {};
+      // 接收房间过期时间
+      if (data.expiresAt) {
+        gameState.room.expiresAt = data.expiresAt;
+      }
 
       // 确保自己在玩家列表中（房主已包含）
+      hideLoadingScreen();
       switchScreen('game');
       initMap();
       rebindCanvasEvents();
       updateGameUI();
+      // 启动房间倒计时
+      startRoomTimer();
+      break;
+
+    case 'chat':
+      // 客户端收到聊天消息
+      addChatMessage(data.senderNickname, data.senderDigitalId, data.message);
       break;
 
     case 'join-rejected':
-      alert('加入失败：' + data.reason);
-      resetState();
-      switchScreen('menu');
+      showModal('加入失败：' + data.reason, 'alert', () => {
+        resetState();
+        switchScreen('menu');
+      });
       break;
 
     case 'player-joined':
@@ -467,9 +533,10 @@ function handleHostMessage(data) {
 
     case 'room-destroyed':
       // 房主退出，房间已销毁
-      alert('房主已退出，房间已销毁');
-      resetState();
-      switchScreen('menu');
+      showModal('房主已退出，房间已销毁', 'alert', () => {
+        resetState();
+        switchScreen('menu');
+      });
       break;
 
     case 'full-sync':
@@ -566,6 +633,9 @@ function leaveRoom() {
     hostConn.send({ type: 'leave' });
   }
 
+  // 停止房间倒计时
+  stopRoomTimer();
+
   // 关闭所有连接，销毁 Peer
   resetState();
 
@@ -585,6 +655,9 @@ function destroyRoom() {
     removePublicRoom(gameState.room.inviteCode);
   }
   removeInviteCodeList(gameState.room.inviteCode);
+
+  // 停止房间倒计时
+  stopRoomTimer();
 
   // 关闭所有连接，销毁 Peer
   resetState();
@@ -613,4 +686,138 @@ function broadcastToOthers(excludePeerId, message) {
       conn.send(message);
     }
   });
+}
+
+/**
+ * 启动房间倒计时
+ */
+function startRoomTimer() {
+  stopRoomTimer(); // 先清除旧的定时器
+  const timerEl = document.getElementById('game-room-timer');
+  if (!timerEl) return;
+
+  const tick = () => {
+    const remaining = gameState.room.expiresAt - Date.now();
+    if (remaining <= 0) {
+      // 房间已过期
+      timerEl.textContent = '剩余时间: 00:00';
+      stopRoomTimer();
+      if (gameState.isHost) {
+        // 房主销毁房间
+        broadcastAll({ type: 'room-expired' });
+        destroyRoom();
+      } else {
+        showModal('房间时间已到，房间已关闭', 'alert', () => {
+          resetState();
+          switchScreen('menu');
+        });
+      }
+      return;
+    }
+    const seconds = Math.ceil(remaining / 1000);
+    timerEl.textContent = '剩余时间: ' + formatTime(seconds);
+  };
+
+  tick(); // 立即执行一次
+  roomTimerInterval = setInterval(tick, 1000);
+}
+
+/**
+ * 停止房间倒计时
+ */
+function stopRoomTimer() {
+  if (roomTimerInterval) {
+    clearInterval(roomTimerInterval);
+    roomTimerInterval = null;
+  }
+}
+
+/**
+ * 发送聊天消息
+ * @param {string} message - 聊天内容
+ */
+function sendChatMessage(message) {
+  if (!message.trim()) return;
+
+  if (gameState.isHost) {
+    // 房主直接广播给所有玩家
+    broadcastAll({
+      type: 'chat',
+      senderNickname: gameState.nickname,
+      senderDigitalId: gameState.digitalId,
+      message: message,
+    });
+    // 房主自己也显示
+    addChatMessage(gameState.nickname, gameState.digitalId, message);
+  } else {
+    // 客户端发送给房主
+    const hostConn = getHostConnection();
+    if (hostConn) {
+      hostConn.send({
+        type: 'chat',
+        senderNickname: gameState.nickname,
+        senderDigitalId: gameState.digitalId,
+        message: message,
+      });
+    }
+  }
+}
+
+/**
+ * 显示加载画面并启动秒表
+ */
+function showLoadingScreen() {
+  let countdown = 30;
+  const timerEl = document.getElementById('loading-timer');
+  if (timerEl) timerEl.textContent = countdown;
+
+  switchScreen('loading');
+
+  // 启动秒表倒数
+  loadingTimerInterval = setInterval(() => {
+    countdown--;
+    if (timerEl) timerEl.textContent = countdown;
+    if (countdown <= 0) {
+      // 超时
+      hideLoadingScreen();
+      showModal('连接超时，请重试', 'alert');
+      cancelJoinRoom();
+    }
+  }, 1000);
+
+  // 设置30秒超时
+  loadingTimeout = setTimeout(() => {
+    hideLoadingScreen();
+    showModal('连接超时，请重试', 'alert');
+    cancelJoinRoom();
+  }, 30000);
+}
+
+/**
+ * 隐藏加载画面并停止秒表
+ */
+function hideLoadingScreen() {
+  if (loadingTimerInterval) {
+    clearInterval(loadingTimerInterval);
+    loadingTimerInterval = null;
+  }
+  if (loadingTimeout) {
+    clearTimeout(loadingTimeout);
+    loadingTimeout = null;
+  }
+}
+
+/**
+ * 取消加入房间
+ */
+function cancelJoinRoom() {
+  hideLoadingScreen();
+  // 销毁 Peer 连接
+  if (gameState.peer) {
+    gameState.peer.destroy();
+    gameState.peer = null;
+  }
+  gameState.peerId = '';
+  gameState.connections = {};
+  switchScreen('join');
 }

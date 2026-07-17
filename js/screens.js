@@ -4,6 +4,73 @@
  */
 
 /**
+ * 显示自定义像素风格 Modal
+ * @param {string} message - 提示消息
+ * @param {string} type - 'alert'（仅确定按钮）或 'confirm'（确认+取消按钮）
+ * @param {function} onConfirm - 确认回调（type='confirm'时生效）
+ */
+function showModal(message, type, onConfirm) {
+  const overlay = document.getElementById('modal-overlay');
+  const msgEl = document.getElementById('modal-message');
+  const btnsEl = document.getElementById('modal-buttons');
+
+  // 设置消息文本
+  msgEl.textContent = message;
+  // 清空旧按钮
+  btnsEl.innerHTML = '';
+
+  if (type === 'confirm') {
+    // 确认按钮
+    const btnConfirm = document.createElement('button');
+    btnConfirm.className = 'pixel-btn btn-green btn-small';
+    btnConfirm.textContent = '确认';
+    btnConfirm.addEventListener('click', () => {
+      overlay.style.display = 'none';
+      if (onConfirm) onConfirm();
+    });
+    btnsEl.appendChild(btnConfirm);
+
+    // 取消按钮
+    const btnCancel = document.createElement('button');
+    btnCancel.className = 'pixel-btn btn-red btn-small';
+    btnCancel.textContent = '取消';
+    btnCancel.addEventListener('click', () => {
+      overlay.style.display = 'none';
+    });
+    btnsEl.appendChild(btnCancel);
+  } else {
+    // 默认 alert 类型：仅确定按钮
+    const btnOk = document.createElement('button');
+    btnOk.className = 'pixel-btn btn-green btn-small';
+    btnOk.textContent = '确定';
+    btnOk.addEventListener('click', () => {
+      overlay.style.display = 'none';
+      if (onConfirm) onConfirm();
+    });
+    btnsEl.appendChild(btnOk);
+  }
+
+  overlay.style.display = 'flex';
+}
+
+/**
+ * 全局 Toast 提示（可在任何界面使用）
+ * @param {string} message - 提示内容
+ */
+function showToastGlobal(message) {
+  const toast = document.createElement('div');
+  toast.className = 'toast-msg';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  // 2秒后自动删除
+  setTimeout(() => {
+    if (toast.parentNode) {
+      toast.parentNode.removeChild(toast);
+    }
+  }, 2000);
+}
+
+/**
  * 切换到指定界面
  * @param {string} screenId - 界面ID（不含 'screen-' 前缀）
  */
@@ -45,8 +112,9 @@ function initRegisterScreen() {
     }
     errorEl.textContent = '';
     gameState.nickname = nickname;
-    // 更新主菜单昵称显示
-    document.getElementById('display-nickname').textContent = nickname;
+    gameState.digitalId = generateDigitalId();
+    // 更新主菜单昵称显示（含数字ID）
+    document.getElementById('display-nickname').textContent = nickname + gameState.digitalId;
     switchScreen('menu');
   });
 
@@ -165,11 +233,16 @@ function refreshRoomList() {
       const card = document.createElement('div');
       card.className = 'room-card';
       card.innerHTML = `
-        <span class="room-card-name">${escapeHtml(room.name)}</span>
-        <span class="room-card-info">创建者：${escapeHtml(room.creator || '未知')} | 房间ID：${escapeHtml(room.roomId || '未知')}</span>
-        <span class="room-card-players">${room.playerCount}人</span>
+        <div class="room-card-info-area">
+          <span class="room-card-name">${escapeHtml(room.name)}</span>
+          <span class="room-card-info">创建者：${escapeHtml(room.creator || '未知')} | 房间ID：${escapeHtml(room.roomId || '未知')}</span>
+          <span class="room-card-players">${room.playerCount}人</span>
+        </div>
+        <button class="pixel-btn btn-green btn-small btn-join-card" data-code="${escapeHtml(room.inviteCode)}">加入</button>
       `;
-      card.addEventListener('click', () => {
+      // 点击"加入"按钮才触发加入房间
+      card.querySelector('.btn-join-card').addEventListener('click', (e) => {
+        e.stopPropagation();
         joinPublicRoom(room.inviteCode);
       });
       roomListEl.appendChild(card);
@@ -244,7 +317,7 @@ function updateGameUI() {
     item.className = 'player-item';
 
     const nameSpan = document.createElement('span');
-    nameSpan.textContent = player.nickname;
+    nameSpan.textContent = player.nickname + '#' + (player.digitalId || '');
 
     const dot = document.createElement('span');
     dot.className = 'player-dot';
@@ -279,9 +352,12 @@ function updateGameUI() {
 /**
  * 初始化游戏界面逻辑
  */
+// 聊天是否激活标志
+let chatActive = false;
+
 function initGameScreen() {
   document.getElementById('btn-start-game').addEventListener('click', () => {
-    alert('游戏即将开始！');
+    showModal('游戏即将开始！', 'alert');
   });
 
   // 退出房间按钮
@@ -294,28 +370,89 @@ function initGameScreen() {
       leaveRoom();
     }
   });
+
+  // 聊天输入框事件
+  const chatInput = document.getElementById('chat-input');
+
+  // 回车发送聊天消息
+  chatInput.addEventListener('keydown', (e) => {
+    e.stopPropagation(); // 阻止事件冒泡到地图
+    if (e.key === 'Enter') {
+      const message = chatInput.value.trim();
+      if (message) {
+        sendChatMessage(message);
+      }
+      // 发送后隐藏输入框
+      chatInput.style.display = 'none';
+      chatInput.value = '';
+      chatActive = false;
+    } else if (e.key === 'Escape') {
+      // ESC取消聊天
+      chatInput.style.display = 'none';
+      chatInput.value = '';
+      chatActive = false;
+    }
+  });
+
+  // 聊天输入框获焦时禁止地图交互
+  chatInput.addEventListener('focus', () => {
+    chatActive = true;
+  });
+  chatInput.addEventListener('blur', () => {
+    chatActive = false;
+  });
+
+  // 取消加入按钮
+  document.getElementById('btn-cancel-join').addEventListener('click', () => {
+    cancelJoinRoom();
+  });
 }
 
 /**
- * 显示 Toast 提示消息
+ * 激活聊天输入框
+ */
+function activateChat() {
+  const chatInput = document.getElementById('chat-input');
+  chatInput.style.display = 'block';
+  chatInput.focus();
+  chatActive = true;
+}
+
+/**
+ * 取消聊天输入
+ */
+function deactivateChat() {
+  const chatInput = document.getElementById('chat-input');
+  chatInput.style.display = 'none';
+  chatInput.value = '';
+  chatActive = false;
+}
+
+/**
+ * 添加聊天消息到聊天区域
+ * @param {string} senderNickname - 发送者昵称
+ * @param {string} senderDigitalId - 发送者数字ID
+ * @param {string} message - 消息内容
+ */
+function addChatMessage(senderNickname, senderDigitalId, message) {
+  const chatMessages = document.getElementById('chat-messages');
+  if (!chatMessages) return;
+
+  const msgEl = document.createElement('div');
+  msgEl.className = 'chat-msg';
+  msgEl.textContent = senderNickname + '#' + (senderDigitalId || '') + ': ' + message;
+  chatMessages.appendChild(msgEl);
+
+  // 自动滚动到底部
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+/**
+ * 显示 Toast 提示消息（游戏界面内使用，兼容旧调用）
  * @param {string} message - 提示内容
  */
 function showToast(message) {
-  // 创建 toast 元素
-  const toast = document.createElement('div');
-  toast.className = 'toast-msg';
-  toast.textContent = message;
-
-  // 添加到游戏界面
-  const gameScreen = document.getElementById('screen-game');
-  gameScreen.appendChild(toast);
-
-  // 2秒后自动删除
-  setTimeout(() => {
-    if (toast.parentNode) {
-      toast.parentNode.removeChild(toast);
-    }
-  }, 2000);
+  showToastGlobal(message);
 }
 
 /**
