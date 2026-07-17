@@ -43,8 +43,8 @@
 
 - [ ] Task 9: 上传到 GitHub 并部署 GitHub Pages
   - [x] SubTask 9.1: 初始化 Git 仓库，提交所有代码
-  - [ ] SubTask 9.2: 创建 GitHub 远程仓库并推送代码
-  - [ ] SubTask 9.3: 启用 GitHub Pages 静态网页托管
+  - [x] SubTask 9.2: 创建 GitHub 远程仓库并推送代码
+  - [ ] SubTask 9.3: 启用 GitHub Pages 静态网页托管（需用户手动完成）
 
 # Task Dependencies
 - [Task 2] depends on [Task 1]
